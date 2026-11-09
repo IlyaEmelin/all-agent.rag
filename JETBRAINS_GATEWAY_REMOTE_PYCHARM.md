@@ -383,3 +383,160 @@ import razdel
 print("Dependencies import OK")
 PY
 ```
+
+---
+
+## 7. Обновление NVIDIA-драйвера на удалённой машине
+
+Этот раздел нужен, если код с GPU падает из-за слишком старого NVIDIA-драйвера, например при запуске:
+
+```python
+from sentence_transformers import SentenceTransformer
+
+model = SentenceTransformer("intfloat/multilingual-e5-base", device="cuda")
+```
+
+Типичная ошибка:
+
+```text
+RuntimeError: The NVIDIA driver on your system is too old
+```
+
+Такое может произойти, если установленный `torch` собран под более новую CUDA-версию, чем поддерживает текущий драйвер на сервере.
+
+### 7.1. Подключиться к серверу
+
+На локальной машине Windows в PowerShell:
+
+```powershell
+ssh -i C:\.ssh\id_ed25519 -o IdentitiesOnly=yes ubuntu@62.84.115.245
+```
+
+Все дальнейшие команды выполняются **на удалённом сервере**.
+
+### 7.2. Обновить драйвер через Ubuntu
+
+```bash
+# 1. Посмотреть текущую версию драйвера и GPU
+nvidia-smi || true
+
+# 2. Обновить индекс пакетов
+sudo apt update
+
+# 3. Установить утилиту автоопределения драйверов
+sudo apt install -y ubuntu-drivers-common
+
+# 4. Посмотреть доступные драйверы
+ubuntu-drivers devices
+
+# 5. Установить рекомендованный драйвер автоматически
+sudo ubuntu-drivers autoinstall
+
+# 6. Перезагрузить сервер
+sudo reboot
+```
+
+После команды `sudo reboot` SSH-сессия оборвётся. Нужно подождать 30–90 секунд и подключиться заново:
+
+```powershell
+ssh -i C:\.ssh\id_ed25519 -o IdentitiesOnly=yes ubuntu@62.84.115.245
+```
+
+### 7.3. Проверить NVIDIA-драйвер после перезагрузки
+
+```bash
+nvidia-smi
+```
+
+В выводе должна быть новая версия драйвера. Например, в случае с Tesla T4 до обновления было:
+
+```text
+Driver Version: 535.247.01
+CUDA Version: 12.2
+```
+
+После `ubuntu-drivers autoinstall` система может установить более новый рекомендованный драйвер, например:
+
+```text
+nvidia-driver-595-open
+```
+
+### 7.4. Проверить PyTorch CUDA
+
+```bash
+cd ~/rag-vector-db
+source .venv/bin/activate
+
+python - <<'PY'
+import torch
+
+print("torch", torch.__version__)
+print("torch cuda build", torch.version.cuda)
+print("cuda available", torch.cuda.is_available())
+
+if torch.cuda.is_available():
+    print("gpu", torch.cuda.get_device_name(0))
+PY
+```
+
+Ожидаемый результат:
+
+```text
+cuda available True
+gpu Tesla T4
+```
+
+### 7.5. Проверить SentenceTransformer на CUDA
+
+```bash
+cd ~/rag-vector-db
+source .venv/bin/activate
+
+python - <<'PY'
+from sentence_transformers import SentenceTransformer
+import torch
+
+print("cuda available:", torch.cuda.is_available())
+
+model = SentenceTransformer("intfloat/multilingual-e5-base", device="cuda")
+
+print("MODEL_OK")
+print("device:", model.device)
+PY
+```
+
+Если модель загрузилась без ошибки и напечатала `MODEL_OK`, значит `SentenceTransformer` может использовать GPU.
+
+### 7.6. Примечания по установке драйвера
+
+Во время установки драйвера через `ubuntu-drivers autoinstall` могут появиться сообщения вроде:
+
+```text
+Job for nvidia-persistenced.service failed
+```
+
+Если это произошло до перезагрузки, это не всегда критично: в текущем kernel ещё может быть загружен старый драйвер, а новые NVIDIA userspace-пакеты уже установлены. Обычно после `sudo reboot` драйвер подхватывается корректно.
+
+Также может быть сообщение:
+
+```text
+Automatic installation of modules for kernel ... was skipped since the kernel headers for this kernel do not seem to be installed.
+```
+
+Если при этом установлен пакет вида:
+
+```text
+linux-modules-nvidia-<version>-open-<kernel>
+```
+
+то система использует готовые NVIDIA kernel modules, и это сообщение может быть не критичным.
+
+Если после перезагрузки `nvidia-smi` не работает, проверить состояние можно командами:
+
+```bash
+uname -r
+dpkg -l | grep -E 'nvidia|linux-modules-nvidia' | grep '^ii'
+nvidia-smi || true
+systemctl status nvidia-persistenced --no-pager || true
+dmesg | grep -i nvidia | tail -n 80
+```
