@@ -7,11 +7,5 @@ __pycache__/
 *.log
 
 # Файлы проекта
-corpus_vecs.npy
-query_vecs.npy
-/HNSW_10000.faiss
-/HNSW_100000.faiss
-/IndexFlat_10000.faiss
-/IndexFlat_100000.faiss
-/IVFFlat_10000.faiss
-/IVFFlat_100000.faiss
+/*.npy
+/*.faiss
