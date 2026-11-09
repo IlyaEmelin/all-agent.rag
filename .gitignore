@@ -9,3 +9,5 @@ __pycache__/
 # Файлы проекта
 *.npy
 *.faiss
+/qdrant_storage/
+/chroma-qdrant/chroma_kb/
