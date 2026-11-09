@@ -5,3 +5,7 @@ venv/
 __pycache__/
 *.pyc
 *.log
+
+# Файлы проекта
+corpus_vecs.npy
+query_vecs.npy
